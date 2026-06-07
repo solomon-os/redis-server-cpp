@@ -7,20 +7,27 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-inline void handleConn(int conn_sock) {
+int connection_counter{0};
+
+inline void handleConn(const int &epfd, const int &conn_sock,
+                       epoll_event *event) {
   char buffer[1024];
+  ++connection_counter;
   // Edge-triggered: this event is our only notification for everything
   // currently buffered, so keep reading until the socket is drained.
   while (true) {
     ssize_t n = recv(conn_sock, buffer, sizeof(buffer), 0);
 
     if (n > 0) {
-      std::cout.write(buffer, n) << std::flush;
+      // std::cout.write(buffer, n) << std::flush;
       send(conn_sock, "+PONG\r\n", 7, 0);
       continue; // there may be more buffered — keep draining
     }
 
-    if (n == 0) {       // peer closed the connection
+    if (n == 0) { // peer closed the connection
+      --connection_counter;
+      std::cout << "closing connection" << connection_counter << std::endl;
+      epoll_ctl(epfd, EPOLL_CTL_DEL, conn_sock, event);
       close(conn_sock); // close also removes it from the epoll set
       return;
     }
@@ -30,13 +37,14 @@ inline void handleConn(int conn_sock) {
     }
 
     std::cerr << "recv failed" << std::endl;
+    epoll_ctl(epfd, EPOLL_CTL_DEL, conn_sock, event);
     close(conn_sock);
     return;
   }
 }
 int main() {
   constexpr int MAX_EVENTS = 20;
-  auto server_socket = socket(AF_INET, SOCK_STREAM, 0);
+  const int server_socket = socket(AF_INET, SOCK_STREAM, 0);
 
   if (server_socket < 0) {
     std::cout << "Creating socket failed" << std::endl;
@@ -56,20 +64,20 @@ int main() {
   server_address.sin_port = htons(6379);
   server_address.sin_addr.s_addr = INADDR_ANY;
 
-  auto binded = bind(server_socket, (struct sockaddr *)&server_address,
-                     sizeof(server_address));
+  const int binded = bind(server_socket, (struct sockaddr *)&server_address,
+                          sizeof(server_address));
   if (binded < 0) {
     std::cout << "Binding to socket port failed" << std::endl;
     return 1;
   }
 
-  auto listened = listen(server_socket, 5);
+  const int listened = listen(server_socket, 5);
   if (listened < 0) {
     std::cout << "listning on socket failed" << std::endl;
     return 1;
   }
 
-  int epfd = epoll_create1(EPOLL_CLOEXEC);
+  const int epfd = epoll_create1(EPOLL_CLOEXEC);
   if (epfd == -1) {
     std::cerr << "epoll creation failed";
     return 1;
@@ -87,7 +95,7 @@ int main() {
   std::cout << "listening on server" << std::endl;
 
   while (true) {
-    int nfds = epoll_wait(epfd, events, MAX_EVENTS, -1);
+    const int nfds = epoll_wait(epfd, events, MAX_EVENTS, -1);
     if (nfds == -1) {
       if (errno == EINTR) {
         continue; // interrupted by a signal (debugger, etc.) — not an error
@@ -124,7 +132,7 @@ int main() {
           return 1;
         }
       } else {
-        handleConn(events[n].data.fd);
+        handleConn(epfd, events[n].data.fd, &events[n]);
       }
     }
   }
