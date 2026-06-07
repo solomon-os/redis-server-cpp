@@ -1,0 +1,16 @@
+services:
+  redis:
+    build: .
+    working_dir: /app
+    volumes:
+      # Whole project mounted so CMakeLists.txt / vcpkg.json are visible.
+      # Use -B build-docker inside the container; build/ holds the macOS build.
+      - .:/app
+    ports:
+      - "6379:6379"
+    # Keep the container alive so you can exec in and compile/run manually.
+    stdin_open: true
+    tty: true
+    # Allow strace/gdb inside the container.
+    cap_add:
+      - SYS_PTRACE
