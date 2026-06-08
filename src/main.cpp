@@ -1,36 +1,40 @@
 #include <cerrno>
 #include <cstdlib>
 #include <fcntl.h>
+#include <format>
 #include <iostream>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#include <string>
 #include <sys/epoll.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
-char buffer[1024];
 inline void handleConn(const int &epfd, const int &conn_sock,
                        epoll_event *event) {
-  ssize_t n{0};
+  char buffer[1024];
+
+  // A command can span multiple recv() chunks, so accumulate the whole thing
+  // into one string instead of relying on the (reused) fixed buffer.
+  std::string inbuf;
   // Edge-triggered: this event is our only notification for everything
   // currently buffered, so keep reading until the socket is drained.
   while (true) {
     ssize_t r_n = recv(conn_sock, buffer, sizeof(buffer), 0);
 
     if (r_n > 0) {
-      n += r_n;
+      inbuf.append(buffer, r_n); // append only the valid bytes
       continue;
-    }
-
-    if (r_n == 0) { // peer closed the connection
-      // std::cout << "closing connection" << connection_counter << std::endl;
-      epoll_ctl(epfd, EPOLL_CTL_DEL, conn_sock, event);
-      close(conn_sock); // close also removes it from the epoll set
-      return;
     }
 
     if (errno == EAGAIN || errno == EWOULDBLOCK) {
       break;
+    }
+
+    if (r_n == 0) { // peer closed the connection
+      epoll_ctl(epfd, EPOLL_CTL_DEL, conn_sock, event);
+      close(conn_sock); // close also removes it from the epoll set
+      return;
     }
 
     std::cerr << "recv failed" << std::endl;
@@ -39,9 +43,14 @@ inline void handleConn(const int &epfd, const int &conn_sock,
     return;
   }
 
-  std::cout.write(buffer, n);
+  if (inbuf.empty()) {
+    return; // spurious wakeup with no data — nothing to reply to
+  }
 
-  send(conn_sock, "+PONG\r\n", 7, MSG_NOSIGNAL);
+  const std::string escaped = std::format("{:?}", inbuf);
+  std::cout << "recv: " << escaped << "\n" << std::flush;
+
+  // send(conn_sock, "+PONG\r\n", 7, MSG_NOSIGNAL);
 }
 int main() {
   constexpr int MAX_EVENTS = 4069;
@@ -81,6 +90,14 @@ int main() {
   const int listened = listen(server_socket, MAX_EVENTS);
   if (listened < 0) {
     std::cout << "listning on socket failed" << std::endl;
+    return 1;
+  }
+
+  // The accept() loop drains the queue until EAGAIN, which only works if the
+  // listening socket is non-blocking — otherwise accept() blocks waiting for
+  // the *next* connection and the event loop never resumes.
+  if (fcntl(server_socket, F_SETFL, O_NONBLOCK) == -1) {
+    std::cerr << "fcntl server_socket O_NONBLOCK failed" << std::endl;
     return 1;
   }
 
