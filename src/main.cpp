@@ -3,37 +3,34 @@
 #include <fcntl.h>
 #include <iostream>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <sys/epoll.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
-int connection_counter{0};
-
+char buffer[1024];
 inline void handleConn(const int &epfd, const int &conn_sock,
                        epoll_event *event) {
-  char buffer[1024];
-  ++connection_counter;
+  ssize_t n{0};
   // Edge-triggered: this event is our only notification for everything
   // currently buffered, so keep reading until the socket is drained.
   while (true) {
-    ssize_t n = recv(conn_sock, buffer, sizeof(buffer), 0);
+    ssize_t r_n = recv(conn_sock, buffer, sizeof(buffer), 0);
 
-    if (n > 0) {
-      // std::cout.write(buffer, n) << std::flush;
-      send(conn_sock, "+PONG\r\n", 7, 0);
-      continue; // there may be more buffered — keep draining
+    if (r_n > 0) {
+      n += r_n;
+      continue;
     }
 
-    if (n == 0) { // peer closed the connection
-      --connection_counter;
-      std::cout << "closing connection" << connection_counter << std::endl;
+    if (r_n == 0) { // peer closed the connection
+      // std::cout << "closing connection" << connection_counter << std::endl;
       epoll_ctl(epfd, EPOLL_CTL_DEL, conn_sock, event);
       close(conn_sock); // close also removes it from the epoll set
       return;
     }
 
     if (errno == EAGAIN || errno == EWOULDBLOCK) {
-      return; // fully drained — wait for the next edge
+      break;
     }
 
     std::cerr << "recv failed" << std::endl;
@@ -41,9 +38,13 @@ inline void handleConn(const int &epfd, const int &conn_sock,
     close(conn_sock);
     return;
   }
+
+  std::cout.write(buffer, n);
+
+  send(conn_sock, "+PONG\r\n", 7, MSG_NOSIGNAL);
 }
 int main() {
-  constexpr int MAX_EVENTS = 20;
+  constexpr int MAX_EVENTS = 4069;
   const int server_socket = socket(AF_INET, SOCK_STREAM, 0);
 
   if (server_socket < 0) {
@@ -55,6 +56,12 @@ int main() {
   if (setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &reuse,
                  sizeof(reuse)) < 0) {
     std::cerr << "setsockopt failed\n";
+    return 1;
+  }
+
+  if (setsockopt(server_socket, IPPROTO_TCP, TCP_NODELAY, &reuse,
+                 sizeof(reuse))) {
+    std::cerr << "setsockopt failed\n" << std::flush;
     return 1;
   }
 
@@ -71,7 +78,7 @@ int main() {
     return 1;
   }
 
-  const int listened = listen(server_socket, 5);
+  const int listened = listen(server_socket, MAX_EVENTS);
   if (listened < 0) {
     std::cout << "listning on socket failed" << std::endl;
     return 1;
@@ -109,28 +116,35 @@ int main() {
         sockaddr conn_addr;
         socklen_t addrlen = sizeof(conn_addr);
 
-        int conn_sock = accept(server_socket, &conn_addr, &addrlen);
-        if (conn_sock == -1) {
-          std::cerr << "accept client failed: " << conn_addr.sa_data
-                    << std::endl;
+        while (true) {
+          int conn_sock = accept(server_socket, &conn_addr, &addrlen);
+          if (conn_sock == -1) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK)
+              break;
+
+            std::cerr << "accept client failed: " << conn_addr.sa_data
+                      << std::endl;
+            continue;
+          }
+
+          int fcntl_flags = fcntl(conn_sock, F_GETFL, 0);
+          if (fcntl_flags == -1) {
+            std::cerr << "fcntl F_GETFL failed" << std::endl;
+            return 1;
+          }
+
+          if (fcntl(conn_sock, F_SETFL, fcntl_flags | O_NONBLOCK) == -1) {
+            std::cerr << "fcntl F_SETFL failed" << std::endl;
+            return 1;
+          }
+
+          ev.events = EPOLLIN | EPOLLET;
+          ev.data.fd = conn_sock;
+          if (epoll_ctl(epfd, EPOLL_CTL_ADD, conn_sock, &ev) == -1) {
+            std::cerr << "epoll_ctl: conn_sock" << std::endl;
+          }
         }
 
-        int fcntl_flags = fcntl(conn_sock, F_GETFL, 0);
-        if (fcntl_flags == -1) {
-          std::cerr << "fcntl F_GETFL failed" << std::endl;
-          return 1;
-        }
-
-        if (fcntl(conn_sock, F_SETFL, fcntl_flags | O_NONBLOCK) == -1) {
-          std::cerr << "fcntl F_SETFL failed" << std::endl;
-          return 1;
-        }
-        ev.events = EPOLLIN | EPOLLET;
-        ev.data.fd = conn_sock;
-        if (epoll_ctl(epfd, EPOLL_CTL_ADD, conn_sock, &ev) == -1) {
-          std::cerr << "epoll_ctl: conn_sock" << std::endl;
-          return 1;
-        }
       } else {
         handleConn(epfd, events[n].data.fd, &events[n]);
       }

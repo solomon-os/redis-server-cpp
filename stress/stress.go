@@ -26,6 +26,8 @@ import (
 	"time"
 )
 
+// addr returns the server to connect to. Set the ADDR env var to target a
+// remote server, e.g. ADDR=1.2.3.4:6379 ; defaults to local.
 func addr() string {
 	if a := os.Getenv("ADDR"); a != "" {
 		return a
@@ -70,7 +72,7 @@ func arg(i int, def int) int {
 
 // ---- scenario: many concurrent connections, each sending N PINGs ----
 func concurrent() {
-	clients := arg(2, 50)
+	clients := arg(2, 500)
 	each := arg(3, 100)
 	fmt.Printf("[concurrent] %d clients × %d PINGs = %d total\n", clients, each, clients*each)
 
