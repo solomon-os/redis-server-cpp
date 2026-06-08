@@ -8,7 +8,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN git clone https://github.com/microsoft/vcpkg /opt/vcpkg \
     && /opt/vcpkg/bootstrap-vcpkg.sh -disableMetrics
 ENV VCPKG_ROOT=/opt/vcpkg \
-    CMAKE_TOOLCHAIN_FILE=/opt/vcpkg/scripts/buildsystems/vcpkg.cmake
+    CMAKE_TOOLCHAIN_FILE=/opt/vcpkg/scripts/buildsystems/vcpkg.cmake \
+    CMAKE_GENERATOR=Ninja
+# ^ Make Ninja the default generator. C++20 modules are NOT supported by the
+# Make generator, so a bare `cmake -B build-docker` must use Ninja.
 
 WORKDIR /app
 
