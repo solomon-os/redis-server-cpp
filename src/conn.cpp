@@ -28,7 +28,7 @@ int Conn::read(char *buf, size_t cap) {
     ssize_t n = recv(this->fd, buf, cap, 0);
 
     if (n > 0) {
-      this->message_buf.append(buf, n);
+      this->msg_buf.append(buf, n);
       continue;
     }
 
@@ -41,7 +41,7 @@ int Conn::read(char *buf, size_t cap) {
     }
   }
 
-  const std::string escaped = std::format("{:?}", this->message_buf);
+  const std::string escaped = std::format("{:?}", this->msg_buf);
   std::cout << "recv: " << escaped << "\n" << std::flush;
   return 0;
 }

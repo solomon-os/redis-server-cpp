@@ -2,7 +2,8 @@
 #include "server.hpp"
 
 int main() {
-  Server server;
+  Handler handler;
+  Server server(handler);
 
   server.listen();
 }

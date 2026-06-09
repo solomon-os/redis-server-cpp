@@ -12,11 +12,12 @@ public:
   int read(char *buf, size_t cap);
   // Owns an fd, so forbid copying (would double-close). Held via unique_ptr,
   // so no move ops are needed.
+  int send(std::string &msg);
   Conn(const Conn &) = delete;
   Conn &operator=(const Conn &) = delete;
 
   inline int register_non_blocking();
 
   const int fd;
-  std::string message_buf;
+  std::string msg_buf;
 };

@@ -1,4 +1,5 @@
 #include "server.hpp"
+#include "handler.hpp"
 #include <cerrno>
 #include <cstring>
 #include <fcntl.h>
@@ -28,7 +29,8 @@ int make_server_fd() {
   return fd;
 }
 
-Server::Server() : epoll_fd{make_epoll()}, fd{make_server_fd()} {
+Server::Server(Handler handle)
+    : epoll_fd{make_epoll()}, fd{make_server_fd()}, handler{handle} {
   int reuse = 1;
   if (setsockopt(this->fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) <
       0) {
@@ -97,8 +99,8 @@ void Server::listen() {
         this->accept();
 
       } else {
-        this->handle_conn(this->epoll_client_events[n].data.fd,
-                          this->epoll_client_events[n]);
+        this->handle(this->epoll_client_events[n].data.fd,
+                     this->epoll_client_events[n]);
       }
     }
   }
@@ -137,11 +139,18 @@ void Server::accept() {
   }
 }
 
-void Server::handle_conn(int client_fd, const epoll_event &client_epoll_event) {
+void Server::handle(int client_fd, const epoll_event &client_epoll_event) {
   auto it = this->conns.find(client_fd);
   if (it == this->conns.end()) {
     return;
   }
 
-  std::unique_ptr<Conn> &client = it->second;
+  Conn &client = *it->second;
+
+  if (client.read(this->msg_buf, Server::msg_buf_len) < 0) {
+    this->conns.erase(client_fd);
+    return;
+  }
+
+  this->handler.handle();
 }
