@@ -6,6 +6,7 @@
 #include <iostream>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#include <print>
 #include <stdexcept>
 #include <sys/epoll.h>
 #include <sys/socket.h>
@@ -84,6 +85,7 @@ void Server::listen() {
   while (true) {
     const int nfds = epoll_wait(this->epoll_fd, this->epoll_client_events,
                                 Server::max_events, -1);
+
     if (nfds == -1) {
       if (errno == EINTR) {
         continue;
@@ -99,8 +101,7 @@ void Server::listen() {
         this->accept();
 
       } else {
-        this->handle(this->epoll_client_events[n].data.fd,
-                     this->epoll_client_events[n]);
+        this->handle(this->epoll_client_events[n].data.fd);
       }
     }
   }
@@ -124,12 +125,15 @@ void Server::accept() {
     }
 
     std::unique_ptr<Conn> conn_ptr = std::make_unique<Conn>(conn_sock);
-
-    this->epoll_server_event.events = EPOLLIN | EPOLLET;
+    if (conn_ptr->register_non_blocking() == -1) {
+      std::cerr << "register_non_block failed: " << std::strerror(errno)
+                << std::endl;
+      continue;
+    }
 
     epoll_event ev{};
+    ev.events = EPOLLIN | EPOLLET;
     ev.data.fd = conn_sock;
-    ev.data.ptr = conn_ptr.get();
 
     if (epoll_ctl(this->epoll_fd, EPOLL_CTL_ADD, conn_sock, &ev) == -1) {
       std::cerr << "epoll_ctl: conn_sock" << std::endl;
@@ -139,18 +143,21 @@ void Server::accept() {
   }
 }
 
-void Server::handle(int client_fd, const epoll_event &client_epoll_event) {
-  auto it = this->conns.find(client_fd);
+void Server::handle(int conn_fd) {
+
+  auto it = this->conns.find(conn_fd);
   if (it == this->conns.end()) {
     return;
   }
 
-  Conn &client = *it->second;
+  Conn &conn = *it->second;
 
-  if (client.read(this->msg_buf, Server::msg_buf_len) < 0) {
-    this->conns.erase(client_fd);
+  if (conn.read(this->msg_buf, Server::msg_buf_len) < 0) {
+    this->conns.erase(conn_fd);
     return;
   }
 
-  this->handler.handle();
+  if (this->handler.handle(conn) < 0) {
+    conns.erase(conn_fd);
+  }
 }

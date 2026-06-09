@@ -1,6 +1,5 @@
 #pragma once
 #include <cstddef>
-#include <string>
 #include <string_view>
 #include <tuple>
 #include <vector>
@@ -14,6 +13,6 @@ struct command {
   std::vector<std::string_view> args;
 };
 
-std::tuple<state, size_t> parse(const std::string_view &msg, size_t size,
-                                command &cmd);
+std::tuple<state, size_t, size_t> parse(const std::string_view &msg,
+                                        size_t size, command &cmd);
 } // namespace parser

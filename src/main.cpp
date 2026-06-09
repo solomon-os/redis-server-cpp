@@ -1,4 +1,4 @@
-
+#include "handler.hpp"
 #include "server.hpp"
 
 int main() {

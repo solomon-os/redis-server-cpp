@@ -15,7 +15,7 @@ public:
   void listen();
   void accept();
 
-  void handle(int client_fd, const epoll_event &client_epoll_event);
+  void handle(int conn_fd);
 
   const int epoll_fd;
   const int fd;
@@ -29,5 +29,5 @@ public:
 
   epoll_event epoll_server_event{}, epoll_client_events[max_events];
 
-  const Handler handler;
+  Handler handler;
 };

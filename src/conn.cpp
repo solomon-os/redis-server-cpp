@@ -1,4 +1,3 @@
-#pragma once
 #include "conn.hpp"
 #include <cerrno>
 #include <cstddef>
@@ -27,11 +26,10 @@ int Conn::register_non_blocking() {
 
 int Conn::read(char *buf, size_t cap) {
   while (true) {
-
     ssize_t n = recv(this->fd, buf, cap, 0);
 
     if (n > 0) {
-      this->msg_buf.append(buf, n);
+      this->msg_in_buf.append(buf, n);
       continue;
     }
 
@@ -44,14 +42,12 @@ int Conn::read(char *buf, size_t cap) {
     }
   }
 
-  const std::string escaped = std::format("{:?}", this->msg_buf);
+  const std::string escaped = std::format("{:?}", this->msg_in_buf);
   std::cout << "recv: " << escaped << "\n" << std::flush;
   return 0;
 }
 
-int Conn::send(const std::string &msg) {
-  this->msg_out_buf.append(msg);
-
+int Conn::flush() {
   std::string_view out_buf{this->msg_out_buf};
   size_t sent = 0;
   ssize_t n = 0;
