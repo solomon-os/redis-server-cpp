@@ -1,9 +1,12 @@
 #pragma once
 #include "conn.hpp"
+#include <cerrno>
 #include <cstddef>
 #include <iostream>
 #include <netinet/in.h>
+#include <string_view>
 #include <sys/epoll.h>
+#include <sys/socket.h>
 
 Conn::Conn(int fd) : fd{fd} {}
 
@@ -44,4 +47,38 @@ int Conn::read(char *buf, size_t cap) {
   const std::string escaped = std::format("{:?}", this->msg_buf);
   std::cout << "recv: " << escaped << "\n" << std::flush;
   return 0;
+}
+
+int Conn::send(const std::string &msg) {
+  this->msg_out_buf.append(msg);
+
+  std::string_view out_buf{this->msg_out_buf};
+  size_t sent = 0;
+  ssize_t n = 0;
+
+  while (sent < out_buf.size()) {
+    auto remaining = out_buf.substr(sent, out_buf.size());
+    n = ::send(this->fd, remaining.data(), remaining.size(), MSG_NOSIGNAL);
+    if (n > 0) {
+      sent += n;
+      continue;
+    }
+
+    if (n == 0) {
+      break;
+    }
+
+    if (n == -1) {
+      if (errno == EINTR) {
+        continue;
+      }
+      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        break; // bufer full finish later
+      }
+      return -1;
+    }
+    break;
+  }
+  this->msg_out_buf.erase(0, sent);
+  return sent;
 }

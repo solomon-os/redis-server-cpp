@@ -9,7 +9,7 @@ public:
 
   ~Handler();
 
-  void handle(Conn &conn);
+  int handle(Conn &conn);
 
   parser::command cmd;
 };

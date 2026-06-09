@@ -5,6 +5,12 @@ Handler::Handler() {};
 
 Handler::~Handler() {};
 
-void Handler::handle(Conn &conn) {
+int Handler::handle(Conn &conn) {
   auto [state, n] = parser::parse(conn.msg_buf, conn.msg_buf.size(), this->cmd);
+  if (state == parser::state::IN_COMPLETE) {
+    return 0;
+  }
+
+  if (state == parser::state::IN_VALID) {
+  }
 }
