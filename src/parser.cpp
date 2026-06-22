@@ -3,9 +3,6 @@
 #include <charconv>
 #include <cstddef>
 #include <cstdint>
-#include <format>
-#include <iostream>
-#include <ostream>
 #include <system_error>
 #include <tuple>
 
@@ -92,8 +89,8 @@ parse_simple_string(const string_view &msg, size_t size, command &cmd) {
   return {state::VALID, 1, idx + edx + 1};
 }
 
-tuple<parser::state, size_t, size_t> parser::parse(const string_view &msg,
-                                                   size_t size, command &cmd) {
+tuple<parser::state, size_t, size_t>
+parser::parse(const string_view &msg, size_t size, command &cmd) noexcept {
 
   if (size <= 1) {
     return {parser::state::IN_COMPLETE, 0, 0};

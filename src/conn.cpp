@@ -7,6 +7,8 @@
 #include <sys/epoll.h>
 #include <sys/socket.h>
 
+using namespace std;
+
 Conn::Conn(int fd) : fd{fd} {}
 
 Conn::~Conn() { close(this->fd); }
@@ -47,13 +49,13 @@ int Conn::read(char *buf, size_t cap) {
   return 0;
 }
 
-int Conn::flush() {
+int Conn::flush(size_t total_read) noexcept {
   std::string_view out_buf{this->msg_out_buf};
   size_t sent = 0;
   ssize_t n = 0;
 
   while (sent < out_buf.size()) {
-    auto remaining = out_buf.substr(sent, out_buf.size());
+    auto remaining = out_buf.substr(sent);
     n = ::send(this->fd, remaining.data(), remaining.size(), MSG_NOSIGNAL);
     if (n > 0) {
       sent += n;
@@ -75,6 +77,11 @@ int Conn::flush() {
     }
     break;
   }
+
+  if (sent > 0 && total_read > 0) {
+    this->msg_in_buf.erase(0, total_read);
+  }
+
   this->msg_out_buf.erase(0, sent);
   return sent;
 }

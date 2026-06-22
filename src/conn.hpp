@@ -9,12 +9,13 @@ class Conn {
 public:
   explicit Conn(int fd);
   ~Conn();
+  Conn(const Conn &) = delete;
+  Conn &operator=(const Conn &) = delete;
+
   int read(char *buf, size_t cap);
   // Owns an fd, so forbid copying (would double-close). Held via unique_ptr,
   // so no move ops are needed.
-  int flush();
-  Conn(const Conn &) = delete;
-  Conn &operator=(const Conn &) = delete;
+  int flush(size_t total_read) noexcept;
 
   int register_non_blocking();
 

@@ -14,5 +14,5 @@ struct command {
 };
 
 std::tuple<state, size_t, size_t> parse(const std::string_view &msg,
-                                        size_t size, command &cmd);
+                                        size_t size, command &cmd) noexcept;
 } // namespace parser

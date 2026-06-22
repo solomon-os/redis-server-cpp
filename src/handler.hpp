@@ -5,11 +5,7 @@
 class Handler {
 
 public:
-  Handler();
-
-  ~Handler();
-
-  int handle(Conn &conn);
+  int handle(Conn &conn) noexcept;
 
   parser::command cmd;
 };

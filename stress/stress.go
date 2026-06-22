@@ -32,6 +32,7 @@ func addr() string {
 	if a := os.Getenv("ADDR"); a != "" {
 		return a
 	}
+	return "161.35.161.112:6379"
 	return "127.0.0.1:6379"
 }
 
