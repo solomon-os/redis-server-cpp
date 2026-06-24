@@ -10,6 +10,42 @@ event loops, the Redis protocol and more.
 **Note**: If you're viewing this repo on GitHub, head over to
 [codecrafters.io](https://codecrafters.io) to try the challenge.
 
+# Architecture
+
+A toy Redis server written in modern C++ (C++23). It speaks the RESP protocol
+and currently supports `PING`, `ECHO`, and the `SET`/`GET` foundations.
+
+## Concurrency model — single-threaded epoll event loop
+
+Rather than a thread (or process) per client, the server multiplexes **all**
+connections on a single thread using a Linux `epoll` event loop. This is the
+same model real Redis uses: one thread, no per-connection locking, no context
+switching under load.
+
+How it works (`src/server.cpp`):
+
+- **One `epoll` instance** (`epoll_create1`) watches the listening socket plus
+  every client socket. `epoll_wait` blocks until *any* of them is readable, then
+  hands back only the ready fds — so the cost scales with active connections,
+  not total connections.
+- **The listening socket** is registered level-triggered (`EPOLLIN`). When it
+  fires, `accept()` runs in a loop that drains the backlog until `EAGAIN`.
+- **Client sockets** are registered **edge-triggered** (`EPOLLET`). Edge mode
+  notifies once per readiness transition, so each handler must read until the
+  socket would block — anything less and the connection stalls.
+- **All sockets are non-blocking** (`O_NONBLOCK`). This is what makes the
+  accept-until-`EAGAIN` and read-until-`EAGAIN` loops safe: a syscall with no
+  more data returns immediately instead of parking the single thread.
+- **Per-connection state** lives in a `Conn` object (owned by `unique_ptr`,
+  keyed by fd in a map). Each `Conn` carries its own input and output buffers,
+  so a partial RESP frame is buffered and resumed on the next `epoll` wakeup
+  without blocking other clients.
+- **Socket tuning**: `SO_REUSEADDR` for fast restart, `TCP_NODELAY` to disable
+  Nagle so small replies (`+PONG\r\n`) go out immediately.
+
+The payoff: many concurrent clients handled on one thread with no locks, no
+thread pool, and predictable latency.
+
 # Passing the first stage
 
 The entry point for your Redis implementation is in `src/main.cpp`. Study and
