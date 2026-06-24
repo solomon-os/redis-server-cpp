@@ -11,6 +11,8 @@ using namespace std;
 int handle_echo(Conn &conn, parser::command &cmd, size_t total_read) noexcept {
   if (cmd.args.size() < 2) {
     resp::simple_string(conn.msg_out_buf, "Invalid command arguments"sv);
+    auto n = conn.flush(total_read);
+    cmd.args.clear();
   }
   resp::bulk_string(conn.msg_out_buf, cmd.args[1]);
 
@@ -19,6 +21,15 @@ int handle_echo(Conn &conn, parser::command &cmd, size_t total_read) noexcept {
   auto n = conn.flush(total_read);
   cmd.args.clear();
   return n;
+}
+
+int handle_set(Conn &conn, parser::command &cmd, size_t total_read) noexcept {
+  if (cmd.args.size() < 2) {
+    resp::simple_string(conn.msg_out_buf, "Invalid command arguments"sv);
+    auto n = conn.flush(total_read);
+    cmd.args.clear();
+    return n;
+  }
 }
 int Handler::handle(Conn &conn) noexcept {
   auto [state, args, total_read] =
